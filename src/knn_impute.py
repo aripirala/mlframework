@@ -74,6 +74,7 @@ class KNNImputation:
 
 
         missing_value_columns = get_columns_with_missing_values(X)
+        remaining_cols = set(np.array(X.columns)) - set(missing_value_columns)
         imputed_df = pd.DataFrame()
         for col in missing_value_columns:
             target = X_knn[col].values
@@ -82,7 +83,9 @@ class KNNImputation:
             target_imputed.columns = [col]
             imputed_df = pd.concat([imputed_df, target_imputed], axis=1)
 
-        return imputed_df
+        final_df = pd.concat([X[[remaining_cols]], imputed_df], axis=1)[[X.columns]]
+
+        return final_df
 
     def distance_matrix(self, X1, X2=None, is_train=True):
         """ Compute the pairwise distance attribute by attribute in order to account for different variables type:
