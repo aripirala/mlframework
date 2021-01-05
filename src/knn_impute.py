@@ -74,12 +74,17 @@ class KNNImputation:
 
 
         missing_value_columns = get_columns_with_missing_values(X)
+        imputed_df = pd.DataFrame()
         for col in missing_value_columns:
             target = X_knn[col].values
             attributes = self.X_imputed.drop(col)
+            target_imputed = self.knn_impute(target, attributes, k_neighbors=5, aggregation_method='mean')
+            target_imputed.columns = [col]
+            imputed_df = pd.concat([imputed_df, target_imputed], axis=1)
 
+        return imputed_df
 
-    def distance_matrix(self, X1, X2, is_train=True):
+    def distance_matrix(self, X1, X2=None, is_train=True):
         """ Compute the pairwise distance attribute by attribute in order to account for different variables type:
             - Continuous
             - Categorical
@@ -166,13 +171,11 @@ class KNNImputation:
                     [pd.factorize(X[[self.categorical_columns]][col])[0] for col in X[[self.categorical_columns]]]).transpose()
             else:
                 X = pd.DataFrame([pd.factorize(X[col])[0] for col in X]).transpose()
-
         if is_all_numeric:
             if is_train:
                 result_matrix = cdist(X, X, metric=self.numeric_distance)
             else:
                 result_matrix = cdist(X.iloc[:X1_len, :], X.iloc[X1_len:, :], metric=self.numeric_distance)
-
         elif is_all_categorical:
             if self.categorical_distance == "weighted-hamming":
                 result_matrix = self.weighted_hamming(X)
@@ -181,7 +184,6 @@ class KNNImputation:
                     result_matrix = cdist(X, X, metric=self.categorical_distance)
                 else:
                     result_matrix = cdist(X.iloc[:X1_len, :], X.iloc[X1_len:, :], metric=self.categorical_distance)
-
         else:
             X_numeric = X[[self.numeric_columns]]
             if is_train:
@@ -209,8 +211,8 @@ class KNNImputation:
         return pd.DataFrame(result_matrix)
 
 
-    def knn_impute(target, attributes, k_neighbors, aggregation_method="mean", numeric_distance="euclidean",
-                   categorical_distance="jaccard", missing_neighbors_threshold=0.5):
+    def knn_impute(self, target, attributes, k_neighbors=5, aggregation_method="mean",
+                   missing_neighbors_threshold=0.5, is_train=True):
         """ Replace the missing values within the target variable based on its k nearest neighbors identified with the
             attributes variables. If more than 50% of its neighbors are also missing values, the value is not modified and
             remains missing. If there is a problem in the parameters provided, returns None.
@@ -223,12 +225,6 @@ class KNNImputation:
                                                   value between 1 and n.
                 - aggregation_method            = how to aggregate the values from the nearest neighbors (mean, median, mode)
                                                   Default = "mean"
-                - numeric_distances             = the metric to apply to continuous attributes.
-                                                  "euclidean" and "cityblock" available.
-                                                  Default = "euclidean"
-                - categorical_distances         = the metric to apply to binary attributes.
-                                                  "jaccard", "hamming", "weighted-hamming" and "euclidean"
-                                                  available. Default = "jaccard"
                 - missing_neighbors_threshold   = minimum of neighbors among the k ones that are not also missing to infer
                                                   the correct value. Default = 0.5
             @returns:
@@ -264,7 +260,11 @@ class KNNImputation:
         target = target.fillna(np.nan)
 
         # Get the distance matrix and check whether no error was triggered when computing it
-        distances = distance_matrix(attributes, numeric_distance, categorical_distance)
+        if is_train:
+            distances = self.distance_matrix(X1=attributes, is_train=True)
+        else:
+            distances = self.distance_matrix(X1=self.X_train, X2=attributes, is_train=False)
+
         print(f"Computed Distances -  distances shape is {distances.shape}")
         if distances is None:
             return None
@@ -289,7 +289,7 @@ class KNNImputation:
                     # print(stats.mode(closest_to_target[~np.array(missing_neighbors)], nan_policy='omit'))
                     target.iloc[i] = stats.mode(closest_to_target[~np.array(missing_neighbors)], nan_policy='omit')[0][0]
 
-        return target #, attributes, distances
+        return target
 
     def transform(df, attributes, k_neighbors, aggregation_method="mean", numeric_distance="euclidean",
                    categorical_distance="jaccard", missing_neighbors_threshold=0.5):
