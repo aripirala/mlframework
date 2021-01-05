@@ -84,6 +84,7 @@ class KNNImputation:
             imputed_df = pd.concat([imputed_df, target_imputed], axis=1)
 
         final_df = pd.concat([X[[remaining_cols]], imputed_df], axis=1)[[X.columns]]
+        self.train_df = final_df # need to store to use it during inference
 
         return final_df
 
