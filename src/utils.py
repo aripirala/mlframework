@@ -29,17 +29,24 @@ def read_df(fname='output_df', dir=None):
     print(f'reading the dataframe: {file_path}')
     return pd.read_csv(file_path)
 
+
 def select_cols(df, dtype='NUMERIC'):
-    return df.select_dtypes(include=NUMERICS_LIST)
+    if dtype in ['NUMERIC', 'CATEGORICAL']:
+        return df.select_dtypes(include=NUMERICS_LIST)
+    elif dtype == ['ALL']:
+        return df
+
 
 def isNumeric(df):
     return df.iloc[:,0].dtype in NUMERICS_LIST
         # df.columns.values == df.select_dtypes(include=NUMERICS_LIST).columns.values
 
+
 def get_columns_with_missing_values(df):
     nas = df.isna().sum()
     nas_df = pd.DataFrame(nas, columns=['null_count'])
     return np.array(nas_df[nas_df.null_count>0].index)
+
 
 def missing_values_table(df):
         # Total missing values

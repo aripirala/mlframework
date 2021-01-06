@@ -5,6 +5,7 @@ from impute import knn_impute
 from configs import TRAIN_DATA, TEST_DATA, WORKING_DIR, INPUT_DIR
 from utils import get_file_path, write_df, read_df, select_cols
 import pandas as pd
+import numpy as np
 
 class CategoricalFeatures:
     def __init__(self, df, categorical_features, encoding_type, handle_na=False):
@@ -221,20 +222,21 @@ class Transformation:
         return fn(data_arr, *args, **kwargs)
 
 class MissingValueImputer:
-    def __init__(self, df, imputation_type, strategy='mean', feature_type='NUMERIC'):
+    def __init__(self, imputation_type='non_time_series', strategy='mean', feature_type='NUMERIC',
+                 drop_feature_threshold=0.4):
 
         self.df_imputed = None
         self.imputation_type=imputation_type
         self.strategy=strategy
         self.feature_type=feature_type
-        self.df_original = df.copy()
-        self.df = select_cols(df.copy(), self.feature_type)
-        # print(len(self.df))
-        print(self.df.columns)
+        # self.df_original = df.copy()
+        self.df = None
         self.imputer = None
+        self.feature_missing_table = None
+        self.drop_feature_threshold = drop_feature_threshold
 
 
-    def fit_transform(self, **kwargs):
+    def fit_transform(self, df, **kwargs):
         # TODO handle numerical imputation
         # - Mean, Median, Mode - Imputer - Done
         # - Model based (KNN Regressor)
@@ -249,29 +251,49 @@ class MissingValueImputer:
         # - Interpolate methods
         # TODO General Methods
         # - create a column identifying null value
-
-        if self.feature_type=='NUMERIC':
-            if self.strategy in ['mean', 'most_frequent', 'median', 'constant']:
-                self.imputer = SimpleImputer(strategy=self.strategy, **kwargs)
-                self.df_imputed = pd.DataFrame(self.imputer.fit_transform(self.df), columns=self.df.columns)
-                return self.df_imputed
-            elif self.strategy == 'knn_impute':
-                missing_values_cols = self.missing_values_table(self.df).index.values
-                for col in missing_values_cols:
-                    print(f'Model based imputation for column - {col}')
-                    target = self.df[col].values #should be a numpy array
-                    attributes = self.df.drop(col, axis=1)
-                    print(f'aggregation_method = {aggregation_method}')
-                    print(f'Neighbhors = {n_neighbors}')
-                    target_imputed = knn_impute(target, attributes, n_neighbors, aggregation_method=aggregation_method)
-                    self.df[col+'_imputed'] = target_imputed.iloc[:,0].values
-        elif self.feature_type=='CATEGORICAL':
+        self.df_feature_type = select_cols(df.copy(), self.feature_type)
+        self.feature_type_columns = self.df_feature_type.columns
+        remaining_cols = set(np.array(df.columns)) - set(np.array(self.feature_type_columns))
+        if self.imputation_type == 'time_series':
             pass
+        else:
+            if self.feature_type=='NUMERIC':
+                if self.strategy in ['mean', 'most_frequent', 'median', 'constant']:
+                    self.imputer = SimpleImputer(strategy=self.strategy, **kwargs)
+                    self.df_imputed = pd.DataFrame(self.imputer.fit_transform(self.df_feature_type),
+                                                   columns=self.df_feature_type.columns)
+                    final_df = pd.concat([df[remaining_cols], self.df_imputed], axis=1)
+                    return final_df
+                elif self.strategy == 'knn_impute':
+                    #TODO: integrate the KNNImputer class and this class
+                    missing_values_cols = self.missing_values_table(self.df).index.values
+                    for col in missing_values_cols:
+                        print(f'Model based imputation for column - {col}')
+                        target = self.df[col].values #should be a numpy array
+                        attributes = self.df.drop(col, axis=1)
+                        print(f'aggregation_method = {aggregation_method}')
+                        print(f'Neighbhors = {n_neighbors}')
+                        target_imputed = knn_impute(target, attributes, n_neighbors, aggregation_method=aggregation_method)
+                        self.df[col+'_imputed'] = target_imputed.iloc[:, 0].values
+            elif self.feature_type=='CATEGORICAL':
+                pass
+
+            elif self.feature_type == 'ALL':
+                if self.strategy == 'DROP_FEATURES':
+                    self.feature_missing_table = self.missing_values_table(self.df)
+                    features_greater_than_threshold_percent_missing = \
+                        self.feature_missing_table[(self.feature_missing_table['% of Total Values'] >
+                                                    self.drop_feature_threshold)].index.values
+                    self.percent_missing_columns = [col for col in self.df.columns if col not in features_greater_than_threshold_percent_missing]
+                    return self.df[self.percent_missing_columns]
 
     def transform(self, df):
         df_select = select_cols(df.copy(), self.feature_type)
-        print(len(df_select.columns))
-        return pd.DataFrame(self.imputer.transform(df_select), columns=df_select.columns)
+        # print(len(df_select.columns))
+        if self.strategy == 'DROP_FEATURES':
+            return df_select[self.percent_missing_columns]
+        elif self.strategy in ['mean', 'most_frequent', 'median', 'constant']:
+            return pd.DataFrame(self.imputer.transform(df_select), columns=df_select.columns)
 
     @staticmethod
     def missing_values_table(df):
