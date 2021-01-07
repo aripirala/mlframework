@@ -31,9 +31,13 @@ def read_df(fname='output_df', dir=None):
 
 
 def select_cols(df, dtype='NUMERIC'):
-    if dtype in ['NUMERIC', 'CATEGORICAL']:
+    if dtype == 'NUMERIC':
         return df.select_dtypes(include=NUMERICS_LIST)
-    elif dtype == ['ALL']:
+    elif dtype == 'CATEGORICAL':
+        num_cols = df._get_numeric_data().columns
+        cat_cols = list(set(df.columns) - set(num_cols))
+        return df[cat_cols]
+    elif dtype == 'ALL':
         return df
 
 

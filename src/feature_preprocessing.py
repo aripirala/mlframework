@@ -1,6 +1,7 @@
 from sklearn import preprocessing
 from sklearn.impute import SimpleImputer
-from impute import knn_impute
+from knn_impute import KNNImputation
+
 
 from configs import TRAIN_DATA, TEST_DATA, WORKING_DIR, INPUT_DIR
 from utils import get_file_path, write_df, read_df, select_cols
@@ -222,19 +223,84 @@ class Transformation:
         return fn(data_arr, *args, **kwargs)
 
 class MissingValueImputer:
-    def __init__(self, imputation_type='non_time_series', strategy='mean', feature_type='NUMERIC',
+    def __init__(self, imputation_type='non_time_series', strategy='IMPUTE',
+                 strategy_numeric='mean', strategy_categorical='mode',
+                 feature_type='ALL',
                  drop_feature_threshold=0.4):
 
         self.df_imputed = None
         self.imputation_type=imputation_type
-        self.strategy=strategy
-        self.feature_type=feature_type
+        self.strategy = strategy # can be IMPUTE/DROP_FEATURES
+        self.strategy_numeric = strategy_numeric
+        self.strategy_categorical = strategy_categorical
+        self.feature_type = feature_type
         # self.df_original = df.copy()
         self.df = None
         self.imputer = None
         self.feature_missing_table = None
         self.drop_feature_threshold = drop_feature_threshold
 
+        self.df_categorical_imputed = pd.DataFrame()
+        self.df_numeric_imputed = pd.DataFrame()
+        self.remaining_non_cat_cols = None
+        self.remaining_non_numeric_cols = None
+
+    def _numeric_fit_transform(self, df, **kwargs):
+        self.df_numeric = select_cols(df.copy(), 'NUMERIC')
+        print(f'Started Numerical {self.strategy_numeric} imputation')
+
+        self.numeric_columns = self.df_numeric.columns
+        self.remaining_non_numeric_cols = set(np.array(df.columns)) - set(np.array(self.numeric_columns))
+
+        if self.strategy_numeric in ['mean', 'most_frequent', 'median', 'constant']:
+            self.imputer = SimpleImputer(strategy=self.strategy_numeric, **kwargs)
+            self.df_numeric_imputed = pd.DataFrame(self.imputer.fit_transform(self.df_numeric),
+                                           columns=self.numeric_columns)
+            final_df = pd.concat([df[self.remaining_non_numeric_cols], self.df_numeric_imputed], axis=1)
+            print(f'Numerical Imputer is fit and completed the transformation')
+            return final_df
+
+    def _categorical_fit_transform(self, df, **kwargs):
+        self.df_categorical = select_cols(df.copy(), 'CATEGORICAL')
+        self.categorical_columns = self.df_categorical.columns
+
+        self.remaining_non_cat_cols = set(np.array(df.columns)) - set(np.array(self.categorical_columns))
+
+        if self.strategy_categorical in ['mode']:
+            self.categorical_feature_modes = dict(zip(self.categorical_columns,
+                                                      [self.df_categorical[col].mode()[0] for col in
+                                                       self.categorical_columns])
+                                                  )
+            # print(f'Categorical columns : {self.categorical_columns}')
+
+            for col in self.categorical_columns:
+                df_categorical_feature_imputed = self.df_categorical[col].fillna(self.categorical_feature_modes[col])
+                self.df_categorical_imputed = pd.concat([self.df_categorical_imputed, df_categorical_feature_imputed],
+                                                        axis=1)
+            final_df = pd.concat([self.df_categorical_imputed, df[self.remaining_non_cat_cols]], axis=1)[df.columns]
+
+            return final_df
+
+    def _numeric_transform(self, df):
+        df_numeric = select_cols(df.copy(), 'NUMERIC')
+
+        if self.strategy_numeric in ['mean', 'most_frequent', 'median', 'constant']:
+            df_numeric_imputed = pd.DataFrame(self.imputer.transform(df_numeric),
+                                           columns=self.numeric_columns)
+            final_df = pd.concat([df[self.remaining_non_numeric_cols], df_numeric_imputed], axis=1)
+            return final_df
+
+    def _categorical_transform(self, df, **kwargs):
+        df_categorical = df[self.categorical_columns]
+        if self.strategy_categorical in ['mode']:
+            # print(f'Categorical columns : {self.categorical_columns}')
+            df_categorical_imputed = pd.DataFrame()
+            for col in self.categorical_columns:
+                df_categorical_feature_imputed = df_categorical[col].fillna(self.categorical_feature_modes[col])
+                df_categorical_imputed = pd.concat([df_categorical_imputed, df_categorical_feature_imputed],
+                                                        axis=1)
+            final_df = pd.concat([df_categorical_imputed, df[self.remaining_non_cat_cols]], axis=1)[df.columns]
+            return final_df
 
     def fit_transform(self, df, **kwargs):
         # TODO handle numerical imputation
@@ -251,55 +317,91 @@ class MissingValueImputer:
         # - Interpolate methods
         # TODO General Methods
         # - create a column identifying null value
-        self.df_feature_type = select_cols(df.copy(), self.feature_type)
-        self.feature_type_columns = self.df_feature_type.columns
-        remaining_cols = set(np.array(df.columns)) - set(np.array(self.feature_type_columns))
         if self.imputation_type == 'time_series':
             pass
         else:
             if self.feature_type=='NUMERIC':
-                if self.strategy in ['mean', 'most_frequent', 'median', 'constant']:
-                    self.imputer = SimpleImputer(strategy=self.strategy, **kwargs)
-                    self.df_imputed = pd.DataFrame(self.imputer.fit_transform(self.df_feature_type),
-                                                   columns=self.df_feature_type.columns)
-                    final_df = pd.concat([df[remaining_cols], self.df_imputed], axis=1)
+                if self.strategy_numeric in ['mean', 'most_frequent', 'median', 'constant']:
+                    final_df = self._numeric_fit_transform(df, **kwargs)
                     return final_df
-                elif self.strategy == 'knn_impute':
+                elif self.strategy_numeric == 'knn_impute':
                     #TODO: integrate the KNNImputer class and this class
-                    missing_values_cols = self.missing_values_table(self.df).index.values
-                    for col in missing_values_cols:
-                        print(f'Model based imputation for column - {col}')
-                        target = self.df[col].values #should be a numpy array
-                        attributes = self.df.drop(col, axis=1)
-                        print(f'aggregation_method = {aggregation_method}')
-                        print(f'Neighbhors = {n_neighbors}')
-                        target_imputed = knn_impute(target, attributes, n_neighbors, aggregation_method=aggregation_method)
-                        self.df[col+'_imputed'] = target_imputed.iloc[:, 0].values
+                    pass
             elif self.feature_type=='CATEGORICAL':
-                pass
+                if self.strategy_categorical=='mode':
+                    final_df = self._categorical_fit_transform(df, **kwargs)
+                    return final_df
+                elif self.strategy_categorical=='knn_impute':
+                    pass #TODO need to code
+            elif self.feature_type == 'BOTH':
+                if self.strategy_numeric in ['mean', 'most_frequent', 'median', 'constant']:
+                    final_df = self._numeric_fit_transform(df, **kwargs)
+                    print(f'df shape is {final_df.shape}')
+                if self.strategy_categorical == 'mode':
+                    final_df = self._categorical_fit_transform(final_df, **kwargs)
+                    print(f'df shape is {final_df.shape}')
+                    return final_df
+
+                elif self.strategy_numeric == 'knn_impute':
+                    #TODO: integrate the KNNImputer class and this class
+                    pass
+
+                elif self.strategy_categorical == 'knn_impute':
+                    pass  # TODO need to code
 
             elif self.feature_type == 'ALL':
                 if self.strategy == 'DROP_FEATURES':
-                    self.feature_missing_table = self.missing_values_table(self.df)
-                    features_greater_than_threshold_percent_missing = \
-                        self.feature_missing_table[(self.feature_missing_table['% of Total Values'] >
-                                                    self.drop_feature_threshold)].index.values
-                    self.percent_missing_columns = [col for col in self.df.columns if col not in features_greater_than_threshold_percent_missing]
-                    return self.df[self.percent_missing_columns]
+                    final_df = self._drop_fit_transform(df)
+                    return final_df
+                elif self.strategy == 'IMPUTE':
+                    pass
 
     def transform(self, df):
-        df_select = select_cols(df.copy(), self.feature_type)
         # print(len(df_select.columns))
         if self.strategy == 'DROP_FEATURES':
-            return df_select[self.percent_missing_columns]
-        elif self.strategy in ['mean', 'most_frequent', 'median', 'constant']:
-            return pd.DataFrame(self.imputer.transform(df_select), columns=df_select.columns)
+            return self._drop_transform(df)
+        elif self.strategy == 'IMPUTE':
+            if self.feature_type == 'NUMERIC':
+                if self.strategy_numeric in ['mean', 'most_frequent', 'median', 'constant']:
+                    final_df = self._numeric_transform(df)
+                    return final_df
+                elif self.strategy_numeric == 'knn_impute':
+                    # TODO: integrate the KNNImputer class and this class
+                    pass
+            elif self.feature_type == 'CATEGORICAL':
+                if self.strategy_categorical == 'mode':
+                    final_df = self._categorical_transform(df)
+                    return final_df
+                elif self.strategy_categorical == 'knn_impute':
+                    pass  # TODO need to code
+            elif self.feature_type == 'BOTH':
+                if self.strategy_numeric in ['mean', 'most_frequent', 'median', 'constant']:
+                    final_df = self._numeric_transform(df)
+                    print(f'df shape is {final_df.shape}')
+                if self.strategy_categorical == 'mode':
+                    final_df = self._categorical_transform(final_df)
+                    return final_df
+
+    def _drop_fit_transform(self, df):
+        self.feature_missing_table = self.missing_values_table(df)
+
+        features_greater_than_threshold_percent_missing = \
+            self.feature_missing_table[(self.feature_missing_table['% of Total Values'] >
+                                        self.drop_feature_threshold * 100.0)].index.values
+
+        print(f'Features not meeting the threshold {self.drop_feature_threshold*100} - '
+              f'\n {features_greater_than_threshold_percent_missing}')
+
+        self.percent_missing_columns = [col for col in df.columns
+                                        if col not in features_greater_than_threshold_percent_missing]
+        return df[self.percent_missing_columns]
+
+    def _drop_transform(self, df):
+        return df[self.percent_missing_columns]
 
     @staticmethod
     def missing_values_table(df):
         # Total missing values
-        # print(self.df.head())
-
 
         mis_val = df.isnull().sum()
         n_rows = df.shape[0]
