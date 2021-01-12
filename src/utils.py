@@ -3,7 +3,7 @@ import os
 import pandas as pd
 import numpy as np
 
-NUMERICS_LIST = ['int16', 'int32', 'int64', 'float16', 'float32', 'float64']
+NUMERICS_LIST = ['float16', 'float32', 'float64']
 
 def get_file_path(fname=None):
     input_dir = os.path.join(WORKING_DIR, 'input')
@@ -18,7 +18,7 @@ def write_df(df, fname='output_df', dir=None):
     else:
         file_path=fname
     print(f'writing to the path: {file_path}')
-    df.to_csv(file_path)
+    df.to_csv(file_path, index=False)
 
 
 def read_df(fname='output_df', dir=None):
@@ -29,17 +29,47 @@ def read_df(fname='output_df', dir=None):
     print(f'reading the dataframe: {file_path}')
     return pd.read_csv(file_path)
 
-
-def select_cols(df, dtype='NUMERIC'):
+def select_dtype_df(df, dtype='NUMERIC'):
     if dtype == 'NUMERIC':
         return df.select_dtypes(include=NUMERICS_LIST)
     elif dtype == 'CATEGORICAL':
-        num_cols = df._get_numeric_data().columns
-        cat_cols = list(set(df.columns) - set(num_cols))
+        # num_cols = df.select_dtypes(include=NUMERICS_LIST).columns
+        cat_cols = df.columns[np.where(df.dtypes != np.float)[0]]
+        # cat_cols = list(set(df.columns) - set(num_cols))
         return df[cat_cols]
     elif dtype == 'ALL':
         return df
 
+def select_dtype_columns(df, dtype='NUMERIC', sub_dtype='ALL'):
+    """
+
+    :param df:
+    :param dtype:
+    :param sub_dtype:
+    :return:
+    """
+
+    if dtype == 'NUMERIC':
+        return df.select_dtypes(include=NUMERICS_LIST).columns
+    elif dtype == 'CATEGORICAL':
+        # num_cols = df.select_dtypes(include=NUMERICS_LIST).columns
+        if sub_dtype == 'ALL':
+            cat_cols = df.columns[np.where(df.dtypes != np.float)[0]]
+        elif sub_dtype == 'object':
+            cat_cols = df.columns[np.where(np.logical_and((df.dtypes != np.float).values, (df.dtypes != np.int).values))[0]]
+        elif sub_dtype == 'int':
+            cat_cols = df.columns[np.where(df.dtypes == np.int)[0]]
+
+        return df[cat_cols].columns
+    elif dtype == 'ALL':
+        return df.columns
+
+
+# def rename_columns(df, old_column_names, new_column_names):
+#     if len(old_column_names) != len(new_column_names):
+#         raise Exception(f'Should have the same length for old and new column names')
+#
+#     return df.rename(columns:)
 
 def isNumeric(df):
     return df.iloc[:,0].dtype in NUMERICS_LIST
@@ -84,3 +114,38 @@ def missing_values_table(df):
 
         # Return the dataframe with missing information
         return mis_val_table_ren_columns
+
+def normalize_dtype(source_df, target_df):
+    """
+    Change the target_df dtypes to same as source_df dataframes
+
+    :param source_df: Pandas DataFrame. The dataframe to be used as reference.
+    :param target_df: Pandas DataFrame. The dataframe that will be changed to same as source df
+    :return: Pandas Dataframe. Which has the same datatypes as source_df
+    """
+    target_df = target_df.copy(deep=True)
+    target_df = target_df.fillna(-99999)
+
+    for col in target_df.columns:
+        if col in source_df.columns:
+            target_df[col] = target_df[col].astype(source_df[col].dtype)
+
+    target_df = target_df.replace(to_replace=-99999, value=np.nan)
+
+    return target_df
+
+
+def convert_dtype(df, cols, dtype='float64'):
+    """
+    Summary: Converts the cols to certain dtype
+
+    :param df: Pandas DataFrame
+    :param cols: list or array-like: Columns to convert the dtype
+    :param dtype: String
+    :return: Pandas DataFrame
+    """
+    df = df.copy(deep=True)
+    for col in cols:
+
+        df[col] = df[col].astype(dtype)
+    return df

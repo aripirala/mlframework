@@ -1,4 +1,5 @@
 import pandas as pd
+from utils import get_file_path, read_df, write_df
 from sklearn import model_selection
 
 """
@@ -81,9 +82,12 @@ class CrossValidation:
 
 
 if __name__ == "__main__":
-    df = pd.read_csv("../input/train_multilabel.csv")
-    cv = CrossValidation(df, shuffle=True, target_cols=["attribute_ids"], 
-                         problem_type="multilabel_classification", multilabel_delimiter=" ")
+    train_path = get_file_path('train_mean_imputed.csv')
+    train_df = read_df(train_path)
+
+
+    cv = CrossValidation(df, shuffle=True, target_cols=["SalePrice"],
+                         problem_type="single_col_regression", num_folds=3)
     df_split = cv.split()
     print(df_split.head())
     print(df_split.kfold.value_counts())

@@ -1,6 +1,13 @@
-from sklearn import ensemble
-0.75091
+from sklearn import ensemble, linear_model
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
+
 MODELS = {
-    "randomforest": ensemble.RandomForestClassifier(n_estimators=200, n_jobs=-1, verbose=2),
-    "extratrees": ensemble.ExtraTreesClassifier(n_estimators=200, n_jobs=-1, verbose=2),
+    "randomforest": ensemble.RandomForestRegressor(n_estimators=50, n_jobs=-1, verbose=0),
+    "extratrees": ensemble.ExtraTreesRegressor(n_estimators=50, n_jobs=-1, verbose=0),
+    "linear_regression": linear_model.LinearRegression()
+}
+
+NORMALIZER = {
+    'min_max_scalar': MinMaxScaler(),
+    'standard_scalar':StandardScaler(),
 }
