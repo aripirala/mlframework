@@ -11,7 +11,7 @@ parser.add_argument('-o','--ofile', required=True)
 args = parser.parse_args()
 
 input_fname = args.ifile
-output_fname = args.ifile
+output_fname = args.ofile
 
 # print(args.ofile)
 

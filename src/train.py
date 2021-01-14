@@ -97,9 +97,13 @@ if __name__ == "__main__":
     clf.fit(train_df, ytrain)
     preds = clf.predict(valid_df)
 
+
     reg_metrics = RegressionMetrics()
     metric = reg_metrics(yvalid, preds, 'rmse')
     print(f"Fold: {FOLD} - metric: {metric}")
+
+    joblib.dump(train_df, f"../input/train_df_{FOLD}.pkl")
+    joblib.dump(valid_df, f"../input/valid_df_{FOLD}.pkl")
 
     joblib.dump(clf, f"../models/{MODEL}_{FOLD}.pkl")
     joblib.dump(train_df.columns, f"../models/{MODEL}_{FOLD}_columns.pkl")
