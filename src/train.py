@@ -4,7 +4,7 @@ from sklearn import ensemble
 from sklearn import preprocessing
 from sklearn import metrics
 import joblib
-from utils import select_dtype_columns
+from utils import select_dtype_columns, select_dtype_dataColumns
 from metrics import RegressionMetrics
 
 import sys

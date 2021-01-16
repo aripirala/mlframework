@@ -226,7 +226,7 @@ class MissingValueImputer:
     def __init__(self, imputation_type='non_time_series', strategy='IMPUTE',
                  strategy_numeric='mean', strategy_categorical='mode',
                  feature_type='ALL',
-                 drop_feature_threshold=0.4, fill_value=None):
+                 drop_feature_threshold=0.4, fill_value=-9999):
 
         self.df_imputed = None
         self.imputation_type=imputation_type

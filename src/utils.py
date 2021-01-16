@@ -102,9 +102,50 @@ def select_dtype_dataColumns(df, dtype:Union[str, list]='NUMERIC'):
         return data_selector.get_feature_names()
 
 
+def select_not_dtype_data(df, dtype:Union[str, list]='NUMERIC', return_type='pandas'):
+    if isinstance(dtype, str):
+        if dtype=='NUMERIC':
+            num_ndarr = non_num_selector.fit_transform(df)
+            if return_type=='pandas':
+               return pd.DataFrame(num_ndarr, columns=non_num_selector.get_feature_names())
+            else:
+                return num_ndarr
+        if dtype == 'CATEGORICAL':
+            num_ndarr = non_cat_selector.fit_transform(df)
+            if return_type == 'pandas':
+                return pd.DataFrame(num_ndarr, columns=non_cat_selector.get_feature_names())
+            else:
+                return num_ndarr
+    else:
+        data_selector = make_column_transformer(
+            ('drop', make_column_selector(dtype_include=dtype)), remainder='passthrough'
+        )
+
+        num_ndarr = data_selector.fit_transform(df)
+        if return_type == 'pandas':
+            return pd.DataFrame(num_ndarr, columns=data_selector.get_feature_names())
+        else:
+            return num_ndarr
+
+
+def select_not_dtype_dataColumns(df, dtype:Union[str, list]='NUMERIC'):
+    if isinstance(dtype, str):
+        if dtype=='NUMERIC':
+            num_selector.fit(df)
+            return num_selector.get_feature_names()
+        if dtype == 'CATEGORICAL':
+            cat_selector.fit(df)
+            return cat_selector.get_feature_names()
+    else:
+        data_selector = make_column_transformer(
+            ('passthrough', make_column_selector(dtype_include=dtype)), remainder='drop'
+        )
+        data_selector.fit(df)
+        return data_selector.get_feature_names()
+
+
 def select_dtype_columns(df, dtype='NUMERIC', sub_dtype='ALL'):
     """
-
     :param df:
     :param dtype:
     :param sub_dtype:
@@ -187,7 +228,6 @@ def normalize_dtype(source_df, target_df):
     """
     target_df = target_df.copy(deep=True)
     target_df = target_df.fillna(-99999)
-
     for col in target_df.columns:
         if col in source_df.columns:
             target_df[col] = target_df[col].astype(source_df[col].dtype)
@@ -211,3 +251,10 @@ def convert_dtype(df, cols, dtype='float64'):
 
         df[col] = df[col].astype(dtype)
     return df
+
+def clean_col_name(col):
+#     print(col)
+    col = col.strip()
+    if "'" in col:
+        col = col.split("'")[1]
+    return col
